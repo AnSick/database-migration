@@ -89,10 +89,21 @@ function migrate_rental_price($src_db, $dest_db, \Film $film) {
     }
 }
 
-// TODO: Remove copying
-function migrate_rent($src_db, $dest_db, \Film $film) {
+function insert_rent($dest_db, $rent, \Film $film) {
     global $current_date, $mysql_date_format;
 
+    $start_date = "str_to_date('$rent->start_date', '$mysql_date_format')";
+    $end_date = $rent->end_date ? "str_to_date('$rent->end_date', '$mysql_date_format')" : "NULL";
+    $migration_date = "str_to_date('$current_date', '$mysql_date_format')";
+
+    execute_query($dest_db, "
+                    INSERT INTO rent (film_title, start_date, end_date, migration_date)
+                    VALUES ('$film->title', $start_date, $end_date, $migration_date)
+                  ");
+}
+
+function migrate_rent($src_db, $dest_db, \Film $film) {
+    $new_rents = [];
     $query = execute_query($src_db, "
         SELECT
           rental.rental_date AS start_date,
@@ -103,15 +114,34 @@ function migrate_rent($src_db, $dest_db, \Film $film) {
         WHERE film.film_id = (SELECT film_id FROM film WHERE title = '$film->title')
         ORDER BY rental_id
     ");
+    while ($rent = $query->fetch_object()) {
+        $new_rents[] = $rent;
+    }
 
-    while ($row = $query->fetch_array()) {
-        $start_date = $row['start_date'];
-        $end_date = $row['end_date'] ?: 'null';
+    $old_rents = [];
+    $query = execute_query($dest_db, "SELECT start_date, end_date FROM rent WHERE film_title = '$film->title'");
+    while ($rent = $query->fetch_object()) {
+        $old_rents[] = $rent;
+    }
 
-        execute_query($dest_db, "
-            INSERT INTO rent (film_title, start_date, end_date, migration_date)
-            VALUES ('$film->title', str_to_date('$start_date', '$mysql_date_format'), if($end_date, str_to_date('$end_date', '$mysql_date_format'), NULL), str_to_date('$current_date', '$mysql_date_format'))
-        ");
+    if (count($old_rents) != 0) {
+        foreach ($new_rents as $new_rent) {
+            $found = false;
+            foreach ($old_rents as $old_rent) {
+                if ($old_rent->start_date == $new_rent->start_date && $old_rent->end_date == $new_rent->end_date) {
+                    $found = true;
+                    break;
+                }
+            }
+
+            if (!$found) {
+                insert_rent($dest_db, $new_rent, $film);
+            }
+        }
+    } else {
+        foreach ($new_rents as $new_rent) {
+            insert_rent($dest_db, $new_rent, $film);
+        }
     }
 }
 
@@ -121,9 +151,6 @@ function migrate_film($src_db, $dest_db, \Film $film) {
     $found = execute_query($dest_db, "SELECT COUNT(title) AS count FROM film WHERE title = '$film->title'");
 
     if ($found->fetch_object()->count == 0) {
-        migrate_rental_price($src_db, $dest_db, $film);
-        migrate_rent($src_db, $dest_db, $film);
-
         execute_query($dest_db, "
             INSERT INTO film(
                 title,
@@ -175,6 +202,8 @@ function migrate_films($src_db, $dest_db) {
 
     foreach ($films as $film) {
         echo 'Migrating: ' . $current_film_position++ . ' of ' . $total_films_count . PHP_EOL;
+        migrate_rental_price($src_db, $dest_db, $film);
+        migrate_rent($src_db, $dest_db, $film);
         migrate_film($src_db, $dest_db, $film);
     }
 }
