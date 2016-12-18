@@ -136,7 +136,7 @@ function migrate_film($src_db, $dest_db, \Film $film) {
                 '$film->title',
                 '$film->description',
                 (SELECT id FROM category WHERE name = '$film->category'),
-                year('$film->release_year'),
+                $film->release_year,
                 (SELECT max(id) from rental_price WHERE film_title = '$film->title' AND migration_date = str_to_date('$current_date', '$mysql_date_format')),
                 (SELECT max(id) FROM rent WHERE film_title = '$film->title' AND migration_date = str_to_date('$current_date', '$mysql_date_format'))
             )
