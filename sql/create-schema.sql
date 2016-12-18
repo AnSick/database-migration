@@ -28,9 +28,9 @@ CREATE TABLE film (
   rental_price_id INT,
   rent_id         INT,
 
-  FOREIGN KEY category_fk (category_id) REFERENCES category (id),
-  FOREIGN KEY rental_price_fk (rental_price_id) REFERENCES rental_price (id),
-  FOREIGN KEY rent_fk (rent_id) REFERENCES rent (id)
+  CONSTRAINT category_fk FOREIGN KEY (category_id) REFERENCES category (id),
+  CONSTRAINT rental_price_fk FOREIGN KEY (rental_price_id) REFERENCES rental_price (id),
+  CONSTRAINT rent_fk FOREIGN KEY (rent_id) REFERENCES rent (id)
 );
 
 COMMIT;
