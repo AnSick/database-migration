@@ -9,8 +9,8 @@ include 'Logger.php';
 $log = new Logger('migration_log.txt', Logger::debug);
 
 // "2016-12-12 00:00:00"
-$date_format = '%Y-%m-%d %h:%i:%s';
-$current_date = date(time());
+$mysql_date_format = '%Y-%m-%d %k:%i:%s';
+$current_date = date('Y-m-d H:i:i', time());
 
 class Film {
     public $title;
@@ -36,7 +36,7 @@ function execute_query(\mysqli $database, $query_string) {
 }
 
 function migrate_categories($src_db, $dest_db) {
-    global $current_date;
+    global $current_date, $mysql_date_format;
 
     $query_string = "SELECT name FROM category";
 
@@ -62,13 +62,13 @@ function migrate_categories($src_db, $dest_db) {
         }
         if (!$found) {
             $name = $new_category['name'];
-            execute_query($dest_db, "INSERT INTO category(name, migration_date) VALUES ('$name', sysdate())");
+            execute_query($dest_db, "INSERT INTO category(name, migration_date) VALUES ('$name', str_to_date('$current_date', '$mysql_date_format'))");
         }
     }
 }
 
 function migrate_rental_price($src_db, $dest_db, \Film $film) {
-    global $current_date;
+    global $current_date, $mysql_date_format;
 
     $query = execute_query($dest_db, "
         SELECT amount
@@ -84,13 +84,14 @@ function migrate_rental_price($src_db, $dest_db, \Film $film) {
     if ($current_rental_price != $old_rental_price) {
         execute_query($dest_db, "
             INSERT INTO rental_price(film_title, amount, migration_date)
-            VALUE ('$film->title', $current_rental_price, sysdate())
+            VALUE ('$film->title', $current_rental_price, str_to_date('$current_date', '$mysql_date_format'))
         ");
     }
 }
 
+// TODO: Remove copying
 function migrate_rent($src_db, $dest_db, \Film $film) {
-    global $current_date, $date_format;
+    global $current_date, $mysql_date_format;
 
     $query = execute_query($src_db, "
         SELECT
@@ -109,12 +110,14 @@ function migrate_rent($src_db, $dest_db, \Film $film) {
 
         execute_query($dest_db, "
             INSERT INTO rent (film_title, start_date, end_date, migration_date)
-            VALUES ('$film->title', str_to_date('$start_date', '$date_format'), str_to_date('$end_date', '$date_format'), sysdate())
+            VALUES ('$film->title', str_to_date('$start_date', '$mysql_date_format'), str_to_date('$end_date', '$mysql_date_format'), str_to_date('$current_date', '$mysql_date_format'))
         ");
     }
 }
 
 function migrate_film($src_db, $dest_db, \Film $film) {
+    global $current_date, $mysql_date_format;
+
     $found = execute_query($dest_db, "SELECT COUNT(title) AS count FROM film WHERE title = '$film->title'");
 
     if ($found->fetch_object()->count == 0) {
@@ -134,8 +137,8 @@ function migrate_film($src_db, $dest_db, \Film $film) {
                 '$film->description',
                 (SELECT id FROM category WHERE name = '$film->category'),
                 year('$film->release_year'),
-                (SELECT id from rental_price WHERE film_title = '$film->title' AND migration_date = sysdate()),
-                (SELECT id FROM rent WHERE film_title = '$film->title' AND migration_date = sysdate())
+                (SELECT max(id) from rental_price WHERE film_title = '$film->title' AND migration_date = str_to_date('$current_date', '$mysql_date_format')),
+                (SELECT max(id) FROM rent WHERE film_title = '$film->title' AND migration_date = str_to_date('$current_date', '$mysql_date_format'))
             )
         ");
     }
@@ -167,7 +170,11 @@ function migrate_films($src_db, $dest_db) {
         $films[] = $film;
     }
 
+    $current_film_position = 1;
+    $total_films_count = count($films);
+
     foreach ($films as $film) {
+        echo 'Migrating: ' . $current_film_position++ . ' of ' . $total_films_count . PHP_EOL;
         migrate_film($src_db, $dest_db, $film);
     }
 }
