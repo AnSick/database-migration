@@ -106,11 +106,11 @@ function migrate_rent($src_db, $dest_db, \Film $film) {
 
     while ($row = $query->fetch_array()) {
         $start_date = $row['start_date'];
-        $end_date = $row['end_date'];
+        $end_date = $row['end_date'] ?: 'null';
 
         execute_query($dest_db, "
             INSERT INTO rent (film_title, start_date, end_date, migration_date)
-            VALUES ('$film->title', str_to_date('$start_date', '$mysql_date_format'), str_to_date('$end_date', '$mysql_date_format'), str_to_date('$current_date', '$mysql_date_format'))
+            VALUES ('$film->title', str_to_date('$start_date', '$mysql_date_format'), if($end_date, str_to_date('$end_date', '$mysql_date_format'), NULL), str_to_date('$current_date', '$mysql_date_format'))
         ");
     }
 }
